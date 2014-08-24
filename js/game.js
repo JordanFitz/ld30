@@ -83,12 +83,17 @@
 		currentWorld1JSON = "levels/l1_w1.json",
 		currentWorld2JSON = "levels/l1_w2.json";
 
+	var world1Spawnpoint = {},
+		world2Spawnpoint = {};
+
 	$.getJSON(currentWorld1JSON, function(data) {
 		world1LevelArray = data.map;
+		world1Spawnpoint = data.spawnpoint;
 	});
 
 	$.getJSON(currentWorld2JSON, function(data) {
 		world2LevelArray = data.map;
+		world2Spawnpoint = data.spawnpoint;
 	});
 
 	var currentLevel = null;
@@ -186,6 +191,12 @@
 			}
 		}
 
+		if ((world1LevelArray && world2LevelArray) && !currentLevel) {
+			world1Player.position = world1Spawnpoint;
+			world2Player.position = world2Spawnpoint;
+			player = copyObject(world1Player);
+		}
+
 		if (world1LevelArray && world2LevelArray) {
 			if (currentWorld === 1) {
 				if (levelArray != world1LevelArray) {
@@ -240,8 +251,8 @@
 			player.position.x += player.velocity.x;
 			player.position.y += player.velocity.y;
 
-			for (var i = 0; i < currentLevel.length; i++) {
-				var tile = currentLevel[i];
+			for (var i = 0; i < currentLevel.tiles.length; i++) {
+				var tile = currentLevel.tiles[i];
 
 				if (tile.type !== 0) {
 					var collision = checkCollision(tile);
@@ -360,8 +371,8 @@
 
 				// Draw the level
 
-				for (var i = 0; i < currentLevel.length; i++) {
-					var tile = currentLevel[i];
+				for (var i = 0; i < currentLevel.tiles.length; i++) {
+					var tile = currentLevel.tiles[i];
 
 					if (tile.type === 1) {
 						context.drawImage(images.tilesheet, 768, 0, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
