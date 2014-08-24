@@ -38,6 +38,9 @@
 		currentFrame: 0
 	}
 
+	// HUD
+	var showHud = false;
+
 	// Player
 	var player = {
 		position: {
@@ -77,23 +80,33 @@
 	};
 
 	// Levels
+	var levelArray;
+
 	var levelArray,
-		world1LevelArray,
-		world2LevelArray,
-		currentWorld1JSON = "levels/l1_w1.json",
-		currentWorld2JSON = "levels/l1_w2.json";
+		world1 = {
+			spawnpoint: {},
+			informationalTiles: [],
+			levelArray: null,
+			json: "levels/l1_w1.json"
+		},
 
-	var world1Spawnpoint = {},
-		world2Spawnpoint = {};
+		world2 = {
+			spawnpoint: {},
+			informationalTiles: [],
+			levelArray: null,
+			json: "levels/l1_w2.json"
+		};
 
-	$.getJSON(currentWorld1JSON, function(data) {
-		world1LevelArray = data.map;
-		world1Spawnpoint = data.spawnpoint;
+	$.getJSON(world1.json, function(data) {
+		world1.levelArray = data.map;
+		world1.spawnpoint = data.spawnpoint;
+		world1.informationalTiles = data.informationalTiles || [];
 	});
 
-	$.getJSON(currentWorld2JSON, function(data) {
-		world2LevelArray = data.map;
-		world2Spawnpoint = data.spawnpoint;
+	$.getJSON(world2.json, function(data) {
+		world2.levelArray = data.map;
+		world2.spawnpoint = data.spawnpoint;
+		world2.informationalTiles = data.informationalTiles || [];
 	});
 
 	var currentLevel = null;
@@ -115,9 +128,11 @@
 			fade.fading = true;
 			if (fade.opacity >= 1) currentWorld = 1;
 		}
+
+		canvas.keys = [];
 	}
 
-	// Copy object because JavaScript is weird ( ͡° ͜ʖ ͡°) 
+	// Copy object because JavaScript is weird ( ͡° ͜ʖ ͡°)
 	function copyObject(from) {
 		return JSON.parse(JSON.stringify(from));
 	}
@@ -191,21 +206,21 @@
 			}
 		}
 
-		if ((world1LevelArray && world2LevelArray) && !currentLevel) {
-			world1Player.position = world1Spawnpoint;
-			world2Player.position = world2Spawnpoint;
+		if ((world1.levelArray && world2.levelArray) && !currentLevel) {
+			world1Player.position = world1.spawnpoint;
+			world2Player.position = world2.spawnpoint;
 			player = copyObject(world1Player);
 		}
 
-		if (world1LevelArray && world2LevelArray) {
+		if (world1.levelArray && world2.levelArray) {
 			if (currentWorld === 1) {
-				if (levelArray != world1LevelArray) {
-					levelArray = world1LevelArray;
+				if (levelArray != world1.levelArray) {
+					levelArray = world1.levelArray;
 					currentLevel = convertArray(levelArray);
 				}
 			} else if (currentWorld === 2) {
-				if (levelArray != world2LevelArray) {
-					levelArray = world2LevelArray;
+				if (levelArray != world2.levelArray) {
+					levelArray = world2.levelArray;
 					currentLevel = convertArray(levelArray);
 				}
 			}
@@ -358,17 +373,6 @@
 
 			// Draw the current level
 			if (currentLevel !== null) {
-				// Draw the player
-				if (!canvas.keys[68] && !canvas.keys[65]) {
-					context.drawImage(images.tilesheet, 54, 256 * playerIdleAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
-				} else {
-					if (!canvas.keys[65]) {
-						context.drawImage(images.tilesheet, 310, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
-					} else {
-						context.drawImage(images.tilesheet, 566, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
-					}
-				}
-
 				// Draw the level
 
 				for (var i = 0; i < currentLevel.tiles.length; i++) {
@@ -394,25 +398,58 @@
 
 				// HUD stuff
 
-				if (currentWorld === 1) {
-					context.drawImage(images.tilesheet, 768, 512, 128, 128, canvas.width - 132, 0, 128, 128);
-				} else if (currentWorld === 2) {
-					context.drawImage(images.tilesheet, 896, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+				if (showHud) {
+					if (currentWorld === 1) {
+						context.drawImage(images.tilesheet, 768, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+					} else if (currentWorld === 2) {
+						context.drawImage(images.tilesheet, 896, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+					}
+
+					context.fillStyle = "rgba(0, 0, 0, 0.5)";
+					context.textBaseline = "middle";
+					context.textAlign = "right";
+					context.font = "30px 'animated'"
+
+					context.fillText("Press [space] to switch worlds", canvas.width - 150, 64);
 				}
 
-				context.fillStyle = "rgba(0, 0, 0, 0.5)";
-				context.textBaseline = "middle";
-				context.textAlign = "right";
-				context.font = "30px 'animated'"
+				// Informational text
+				for (var i = 0; i < ((currentWorld === 1) ? world1.informationalTiles.length : world2.informationalTiles.length); i++) {
+					var informationalTile = (currentWorld === 1) ? world1.informationalTiles[i] : world2.informationalTiles[i];
 
-				context.fillText("Press [space] to switch worlds", canvas.width - 150, 64);
+					context.fillStyle = "rgba(0, 0, 0, 0.2)";
+					context.textBaseline = "middle";
+					context.textAlign = "center";
+					context.font = "50px 'animated'"
+
+					context.fillText("?", (informationalTile.x + TILE_SIZE / 2) - player.view.x, (informationalTile.y + TILE_SIZE / 2) - player.view.y);
+
+					if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, informationalTile.x - player.view.x, informationalTile.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+						context.fillStyle = "rgba(0, 0, 0, 0.5)";
+						context.font = "20px 'animated'"
+						context.fillText(informationalTile.text, canvas.width / 2, canvas.height / 2 - 50);
+
+						if(informationalTile.activateHud)  showHud = true;
+					}
+				}
+
+				// Draw the player
+				if (!canvas.keys[68] && !canvas.keys[65]) {
+					context.drawImage(images.tilesheet, 54, 256 * playerIdleAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+				} else {
+					if (!canvas.keys[65]) {
+						context.drawImage(images.tilesheet, 310, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+					} else {
+						context.drawImage(images.tilesheet, 566, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+					}
+				}
 
 				// Overlay
 				context.drawImage(images.overlay, 0, 0);
 
 				// Fade
 				if (fade.fading) {
-					context.fillStyle = "rgba(255, 255, 255, " + fade.opacity + ")";
+					context.fillStyle = "rgba(50, 50, 50, " + fade.opacity + ")";
 					context.fillRect(0, 0, canvas.width, canvas.height);
 				}
 
