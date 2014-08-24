@@ -181,9 +181,9 @@
 					}
 				}
 
-				if (fade.opacity < 1) fade.opacity += 0.05;
+				if (fade.opacity < 1) fade.opacity += 0.09;
 			} else {
-				if (fade.opacity > 0) fade.opacity -= 0.01;
+				if (fade.opacity > 0) fade.opacity -= 0.05;
 				if (fade.opacity <= 0) {
 					fade.fading = false;
 					fade.direction = 0;
@@ -213,7 +213,7 @@
 
 		if (currentLevel) {
 			if (canvas.keys[68] /* D key */ ) {
-				if (player.position.x + player.width < canvas.width - 256 || player.view.x + canvas.width >= levelArray[0].length * 64) {
+				if (player.position.x + player.width < canvas.width - 384 || player.view.x + canvas.width >= levelArray[0].length * 64) {
 					if (player.velocity.x < player.speed && player.position.x + player.width < canvas.width) {
 						player.velocity.x++;
 					}
@@ -224,7 +224,7 @@
 			}
 
 			if (canvas.keys[65] /* A key */ ) {
-				if (player.position.x > 256 || player.view.x === 0) {
+				if (player.position.x > 384 || player.view.x === 0) {
 					if (player.velocity.x > -player.speed && player.position.x > 0) {
 						player.velocity.x--;
 					}
@@ -420,7 +420,10 @@
 
 				if (window.location.hash.indexOf("debug") != -1) {
 					context.fillStyle = "#000";
-					context.fillText(fps.display, 3, 10);
+					context.textAlign = "left";
+					context.textBaseline = "top";
+					context.font = "15px monospace";
+					context.fillText(fps.display, 7, 3);
 				}
 			}
 		}
