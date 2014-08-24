@@ -1,0 +1,14 @@
+@font-face {
+	font-family: 'animated';
+	src: url(../fonts/animated.ttf);
+}
+
+body {
+	margin: 0;
+	background: #1c1c1c;
+	font-family: Helvetica, Arial, sans-serif;
+}
+
+canvas {
+	box-shadow: 0 0 35px rgba(0, 0, 0, 0.9);
+}
