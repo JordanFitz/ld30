@@ -30,6 +30,11 @@
 			"y": 512,
 			"text": "Try switching to world 2.",
 			"activateHud": true
+		},
+		{
+			"x": 1024,
+			"y": 512,
+			"text": "You made it!"
 		}
 	]
 }

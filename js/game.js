@@ -100,19 +100,22 @@
 			json: "levels/l1_w2.json"
 		};
 
-	$.getJSON(world1.json, function(data) {
-		world1.levelArray = data.map;
-		world1.spawnpoint = data.spawnpoint;
-		world1.informationalTiles = data.informationalTiles || [];
-	});
-
-	$.getJSON(world2.json, function(data) {
-		world2.levelArray = data.map;
-		world2.spawnpoint = data.spawnpoint;
-		world2.informationalTiles = data.informationalTiles || [];
-	});
-
 	var currentLevel = null;
+
+	function loadLevels() {
+		$.getJSON(world1.json, function(data) {
+			world1.levelArray = data.map;
+			world1.spawnpoint = data.spawnpoint;
+			world1.informationalTiles = data.informationalTiles || [];
+			currentLevel = null;
+		});
+
+		$.getJSON(world2.json, function(data) {
+			world2.levelArray = data.map;
+			world2.spawnpoint = data.spawnpoint;
+			world2.informationalTiles = data.informationalTiles || [];
+		});
+	}
 
 	// Transition between worlds
 
@@ -150,7 +153,7 @@
 			if (placeOn === 0) {
 				placeOn = world1.levelArray[arrayY][arrayX];
 				if (placeOn === 0) {
-					if (!Salmon.util.boundingBox(world1Player.position.x, world1Player.position.y, world1Player.width, world1Player.height, arrayX * TILE_SIZE, arrayY * TILE_SIZE, TILE_SIZE, TILE_SIZE)) {
+					if (!Salmon.util.boundingBox(world1Player.view.x + world1Player.position.x, world1Player.view.y + world1Player.position.y, world1Player.width, world1Player.height, arrayX * TILE_SIZE, arrayY * TILE_SIZE, TILE_SIZE, TILE_SIZE)) {
 						world1.levelArray[arrayY][arrayX] = 3;
 						world2.levelArray[arrayY][arrayX] = 3;
 
@@ -196,8 +199,8 @@
 		var relativeX = player.view.x + player.position.x,
 			relativeY = player.view.y + player.position.y;
 
-		var arrayX = (Math.round(relativeX / TILE_SIZE) * TILE_SIZE) / TILE_SIZE,
-			arrayY = (Math.round(relativeY / TILE_SIZE) * TILE_SIZE) / TILE_SIZE;
+		var arrayX = (Math.floor(relativeX / TILE_SIZE) * TILE_SIZE) / TILE_SIZE,
+			arrayY = (Math.floor(relativeY / TILE_SIZE) * TILE_SIZE) / TILE_SIZE;
 
 		if (left) {
 			// Place to the left, if possible
@@ -657,6 +660,9 @@
 				if (currentWorld === 2 && playerHoldingBlock) placeBlock(true);
 			}
 		});
+
+		// Load in the first levels
+		loadLevels();
 	}
 
 	init();
