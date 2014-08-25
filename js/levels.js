@@ -12,8 +12,7 @@ function convertArray(array) {
 					},
 
 					type: row[j],
-
-					rotation: (Math.round(Math.random() * 3) * 90)
+					arrayPosition: [i, j]
 				};
 
 				tiles.push(tile);

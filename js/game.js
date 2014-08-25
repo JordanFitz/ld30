@@ -69,6 +69,9 @@
 		}
 	};
 
+	var playerHoldingBlock = false,
+		pickUpBlock = false;
+
 	var world1Player = copyObject(player),
 		world2Player = copyObject(player);
 
@@ -129,7 +132,80 @@
 			if (fade.opacity >= 1) currentWorld = 1;
 		}
 
+		showHud = true;
+
 		canvas.keys = [];
+	}
+
+	// Place transdimensional block
+	var canPlaceBlock = true;
+	var placeBlockMessage = "";
+	var resetCanPlaceBlock;
+
+	function checkBlock(arrayX, arrayY) {
+		var placeOn = world2.levelArray[arrayY][arrayX];
+		var error = false;
+
+		if (arrayX >= 0 && arrayX < levelArray[0].length) {
+			if (placeOn === 0) {
+				placeOn = world1.levelArray[arrayY][arrayX];
+				if (placeOn === 0) {
+					if (!Salmon.util.boundingBox(world1Player.position.x, world1Player.position.y, world1Player.width, world1Player.height, arrayX * TILE_SIZE, arrayY * TILE_SIZE, TILE_SIZE, TILE_SIZE)) {
+						world1.levelArray[arrayY][arrayX] = 3;
+						world2.levelArray[arrayY][arrayX] = 3;
+
+						if (currentWorld === 1) {
+							levelArray = world1.levelArray;
+							currentLevel = convertArray(levelArray);
+						} else if (currentWorld === 2) {
+							levelArray = world2.levelArray;
+							currentLevel = convertArray(levelArray);
+						}
+
+						playerHoldingBlock = false;
+					} else {
+						// Can't place, other player is there D:
+						error = true;
+						placeBlockMessage = "Blocks can't be placed where you're standing."
+					}
+				} else {
+					// Can't place, tile isn't blank
+					error = true;
+					placeBlockMessage = "Blocks can only be placed on blank areas in world 1."
+				}
+			} else {
+				// Can't place, tile isn't blank
+				error = true;
+				placeBlockMessage = "Blocks can only be placed on blank areas."
+			}
+		} else {
+			// Can't place, outside of bounds
+			error = true;
+		}
+
+		if (error) {
+			canPlaceBlock = false;
+			if (resetCanPlaceBlock) clearTimeout(resetCanPlaceBlock);
+			resetCanPlaceBlock = setTimeout(function() {
+				canPlaceBlock = true
+			}, 2500);
+		}
+	}
+
+	function placeBlock(left) {
+		var relativeX = player.view.x + player.position.x,
+			relativeY = player.view.y + player.position.y;
+
+		var arrayX = (Math.round(relativeX / TILE_SIZE) * TILE_SIZE) / TILE_SIZE,
+			arrayY = (Math.round(relativeY / TILE_SIZE) * TILE_SIZE) / TILE_SIZE;
+
+		if (left) {
+			// Place to the left, if possible
+			checkBlock(arrayX - 1, arrayY);
+		} else {
+			// To the right!
+			checkBlock(arrayX + 1, arrayY);
+		}
 	}
 
 	// Copy object because JavaScript is weird ( ͡° ͜ʖ ͡°)
@@ -227,6 +303,10 @@
 		}
 
 		if (currentLevel) {
+			if (currentWorld !== 2) pickUpBlock = false;
+
+			if (fade.fading) return;
+
 			if (canvas.keys[68] /* D key */ ) {
 				if (player.position.x + player.width < canvas.width - 384 || player.view.x + canvas.width >= levelArray[0].length * 64) {
 					if (player.velocity.x < player.speed && player.position.x + player.width < canvas.width) {
@@ -268,6 +348,27 @@
 
 			for (var i = 0; i < currentLevel.tiles.length; i++) {
 				var tile = currentLevel.tiles[i];
+
+				if (tile.type === 3) {
+					world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = tile.type;
+					world2.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = tile.type;
+
+					if (currentWorld === 2) {
+						if (pickUpBlock) {
+							if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+								playerHoldingBlock = true;
+								currentLevel.tiles.splice(i, 1);
+								levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
+								world2.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
+								world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
+							}
+
+							pickUpBlock = false;
+						}
+
+						continue;
+					}
+				}
 
 				if (tile.type !== 0) {
 					var collision = checkCollision(tile);
@@ -375,6 +476,8 @@
 			if (currentLevel !== null) {
 				// Draw the level
 
+				var hideInformationalText = false;
+
 				for (var i = 0; i < currentLevel.tiles.length; i++) {
 					var tile = currentLevel.tiles[i];
 
@@ -384,6 +487,24 @@
 
 					if (tile.type === 2) {
 						context.drawImage(images.tilesheet, 768, 256, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+					}
+
+					if (tile.type === 3) {
+						// Transdimensional block 
+						context.drawImage(images.tilesheet, 768, 640, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+
+						if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+							context.textBaseline = "middle";
+							context.textAlign = "center";
+							context.fillStyle = "rgba(0, 0, 0, 0.5)";
+							context.font = "20px 'animated'"
+
+							context.fillText("Press [E] to pick up the transdimensional block.", canvas.width / 2, canvas.height / 2 - 50);
+
+							hideInformationalText = true;
+						} else {
+							hideInformationalText = false;
+						}
 					}
 				}
 
@@ -408,9 +529,32 @@
 					context.fillStyle = "rgba(0, 0, 0, 0.5)";
 					context.textBaseline = "middle";
 					context.textAlign = "right";
-					context.font = "30px 'animated'"
+					context.font = "17px 'animated'"
 
 					context.fillText("Press [space] to switch worlds", canvas.width - 150, 64);
+				}
+
+				if (playerHoldingBlock) {
+					if (currentWorld === 2) {
+						context.fillStyle = "rgba(0, 0, 0, 0.5)";
+						context.textBaseline = "middle";
+						context.textAlign = "left";
+						context.font = "17px 'animated'";
+
+						context.drawImage(images.tilesheet, 768, 640, 256, 256, 32, 32, 64, 64);
+						context.fillText("Use [left] or [right] to place the block", 128, 64)
+					}
+				}
+
+				// Block place messages
+
+				if (!canPlaceBlock) {
+					context.fillStyle = "rgba(0, 0, 0, 0.2)";
+					context.textBaseline = "top";
+					context.textAlign = "center";
+					context.font = "20px 'animated'"
+
+					context.fillText(placeBlockMessage, canvas.width / 2, 96);
 				}
 
 				// Informational text
@@ -424,16 +568,26 @@
 
 					context.fillText("?", (informationalTile.x + TILE_SIZE / 2) - player.view.x, (informationalTile.y + TILE_SIZE / 2) - player.view.y);
 
-					if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, informationalTile.x - player.view.x, informationalTile.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+					if (!hideInformationalText && Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, informationalTile.x - player.view.x, informationalTile.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
 						context.fillStyle = "rgba(0, 0, 0, 0.5)";
 						context.font = "20px 'animated'"
 						context.fillText(informationalTile.text, canvas.width / 2, canvas.height / 2 - 50);
 
-						if(informationalTile.activateHud)  showHud = true;
+						if (informationalTile.activateHud) showHud = true;
 					}
 				}
 
 				// Draw the player
+
+				if (currentWorld === 2) {
+					context.save();
+
+					context.globalAlpha = 0.2;
+					context.drawImage(images.tilesheet, 54, 256, 150, 252, world1Player.view.x + world1Player.position.x - player.view.x, world1Player.view.y + world1Player.position.y - player.view.y, world1Player.width, world1Player.height);
+
+					context.restore();
+				}
+
 				if (!canvas.keys[68] && !canvas.keys[65]) {
 					context.drawImage(images.tilesheet, 54, 256 * playerIdleAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
 				} else {
@@ -487,6 +641,20 @@
 		window.addEventListener("keyup", function(e) {
 			if (e.keyCode === 32) {
 				if (!fade.fading) transitionWorld();
+			}
+
+			if (e.keyCode === 69) {
+				pickUpBlock = true;
+			}
+
+			if (e.keyCode === 39) {
+				// Right
+				if (currentWorld === 2 && playerHoldingBlock) placeBlock(false)
+			}
+
+			if (e.keyCode === 37) {
+				// Left
+				if (currentWorld === 2 && playerHoldingBlock) placeBlock(true);
 			}
 		});
 	}
