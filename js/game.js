@@ -12,12 +12,58 @@
 
 	var context = canvas.context;
 
+	var ScreenState = {
+		DRAW: 0,
+		PLAY: 1,
+		MENU: 2
+	};
+
+	var state = ScreenState.MENU;
+
+	var mouse = {
+		x: null,
+		y: null,
+		down: false
+	};
+
+	var backgroundMusic = new Audio();
+	backgroundMusic.src = "audio/background.wav";
+
+	backgroundMusic.addEventListener('ended', function() {
+		this.currentTime = 0;
+		this.play();
+	}, false);
+
+	backgroundMusic.volume = 0.4;
+
+	// Drawing
+	var faceDrawingsExist = (localStorage.getItem("face1") && localStorage.getItem("face2")),
+		readyToDraw = false,
+		currentDrawing = 1;
+
+	function drawLine(x, y) {
+		context.lineTo(x, y);
+		context.lineWidth = 50;
+		context.stroke();
+		context.beginPath();
+		context.arc(x, y, 25, 0, Math.PI * 2);
+		context.fillStyle = "#000";
+		context.fill();
+		context.beginPath();
+		context.moveTo(x, y);
+	}
+
 	// Images 
 
 	var images = {};
 	images.background = Salmon.util.loadImage("img/background.png");
 	images.overlay = Salmon.util.loadImage("img/overlay.png");
 	images.tilesheet = Salmon.util.loadImage("img/tilesheet.png");
+
+	if (faceDrawingsExist) {
+		images.face1 = Salmon.util.loadImage(localStorage.getItem("face1"));
+		images.face2 = Salmon.util.loadImage(localStorage.getItem("face2"));
+	}
 
 	var tilesheetLoaded = false;
 	images.tilesheet.onload = function() {
@@ -90,30 +136,45 @@
 			spawnpoint: {},
 			informationalTiles: [],
 			levelArray: null,
-			json: "levels/l1_w1.json"
+			json: "levels/l1_w1.json",
+			nextLevelTrigger: {}
 		},
 
 		world2 = {
 			spawnpoint: {},
 			informationalTiles: [],
 			levelArray: null,
-			json: "levels/l1_w2.json"
+			json: "levels/l1_w2.json",
+			nextLevelTrigger: {}
 		};
 
 	var currentLevel = null;
 
+	var loadingLevels = false;
+
 	function loadLevels() {
+		var w1Loaded = false,
+			w2Loaded = false;
+
+		loadingLevels = true;
+
 		$.getJSON(world1.json, function(data) {
-			world1.levelArray = data.map;
-			world1.spawnpoint = data.spawnpoint;
+			world1.levelArray = data.map || [];
+			world1.spawnpoint = data.spawnpoint || {};
 			world1.informationalTiles = data.informationalTiles || [];
+			world1.nextLevelTrigger = data.nextLevelTrigger || {};
 			currentLevel = null;
+			w1Loaded = true;
+			currentWorld === 1;
+			if (w2Loaded) loadingLevels = false;
 		});
 
 		$.getJSON(world2.json, function(data) {
-			world2.levelArray = data.map;
-			world2.spawnpoint = data.spawnpoint;
+			world2.levelArray = data.map || [];
+			world2.spawnpoint = data.spawnpoint || {};
 			world2.informationalTiles = data.informationalTiles || [];
+			w2Loaded = true;
+			if (w1Loaded) loadingLevels = false;
 		});
 	}
 
@@ -259,6 +320,8 @@
 	}
 
 	function update() {
+		faceDrawingsExist = (localStorage.getItem("face1") && localStorage.getItem("face2"));
+
 		if (fade.fading) {
 			if (fade.direction === 0) {
 				if (fade.opacity >= 1) {
@@ -285,9 +348,22 @@
 			}
 		}
 
+		if (!images.face1 || !images.face2) {
+			if (faceDrawingsExist) {
+				images.face1 = Salmon.util.loadImage(localStorage.getItem("face1"));
+				images.face2 = Salmon.util.loadImage(localStorage.getItem("face2"));
+			}
+		}
+
 		if ((world1.levelArray && world2.levelArray) && !currentLevel) {
 			world1Player.position = world1.spawnpoint;
 			world2Player.position = world2.spawnpoint;
+
+			world1Player.view.x = 0;
+			world1Player.view.y = 0;
+			world2Player.view.x = 0;
+			world2Player.view.y = 0;
+
 			player = copyObject(world1Player);
 		}
 
@@ -308,7 +384,7 @@
 		if (currentLevel) {
 			if (currentWorld !== 2) pickUpBlock = false;
 
-			if (fade.fading) return;
+			if (fade.fading || state !== ScreenState.PLAY) return;
 
 			if (canvas.keys[68] /* D key */ ) {
 				if (player.position.x + player.width < canvas.width - 384 || player.view.x + canvas.width >= levelArray[0].length * 64) {
@@ -341,6 +417,15 @@
 				}
 			}
 
+			if (currentWorld === 1 && !world1.nextLevelTrigger.lastLevel) {
+				if (!loadingLevels && Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, world1.nextLevelTrigger.x - player.view.x, world1.nextLevelTrigger.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+					world1.json = world1.nextLevelTrigger.world1;
+					world2.json = world1.nextLevelTrigger.world2;
+
+					loadLevels();
+				}
+			}
+
 			player.velocity.x *= player.friction;
 			player.velocity.y += player.gravity;
 
@@ -353,7 +438,7 @@
 				var tile = currentLevel.tiles[i];
 
 				if (tile.type === 3) {
-					world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = tile.type;
+					if (world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] === 0) world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = tile.type;
 					world2.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = tile.type;
 
 					if (currentWorld === 2) {
@@ -363,7 +448,7 @@
 								currentLevel.tiles.splice(i, 1);
 								levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
 								world2.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
-								world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
+								if (world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] === 3) world1.levelArray[tile.arrayPosition[0]][tile.arrayPosition[1]] = 0;
 							}
 
 							pickUpBlock = false;
@@ -468,156 +553,229 @@
 
 			context.fillText("Loading Textures", canvas.width / 2, canvas.height / 2);
 		} else {
-			// Clear the canvas
-			context.fillStyle = "#fff";
-			context.fillRect(0, 0, canvas.width, canvas.height);
+			if (state === ScreenState.MENU) {
+				// Clear the canvas
+				context.fillStyle = "#fff";
+				context.fillRect(0, 0, canvas.width, canvas.height);
 
-			// Background
-			context.drawImage(images.background, 0, 0);
+				context.drawImage(images.background, 0, 0);
 
-			// Draw the current level
-			if (currentLevel !== null) {
-				// Draw the level
+				context.textAlign = "center";
+				context.textBaseline = "top";
+				context.font = "50px 'animated'";
+				context.fillStyle = "rgba(0, 0, 0, 0.8)";
 
-				var hideInformationalText = false;
+				context.fillText("Connected Worlds", canvas.width / 2, 150);
 
-				for (var i = 0; i < currentLevel.tiles.length; i++) {
-					var tile = currentLevel.tiles[i];
+				context.textBaseline = "bottom"
+				context.font = "30px 'animated'";
+				context.fillText("A game made in 72 hours", canvas.width / 2, canvas.height - 100);
+				context.fillText("By Jacksack (graphics) and JordanFitz (programming)", canvas.width / 2, canvas.height - 50);
 
-					if (tile.type === 1) {
-						context.drawImage(images.tilesheet, 768, 0, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+				// Play button!
+				context.strokeStyle = "#000";
+				context.lineWidth = 3;
+				var buttonX = canvas.width / 2 - 96,
+					buttonY = canvas.height / 2 - 32;
+
+				context.strokeRect(buttonX, buttonY, 192, 64);
+
+				if (mouse.x >= buttonX && mouse.y >= buttonY && mouse.x < buttonX + 192 && mouse.y < buttonY + 64) {
+					context.fillStyle = "rgba(0, 0, 0, 0.4)";
+					context.fillRect(buttonX, buttonY, 192, 64);
+
+					if (mouse.down) {
+						state = (faceDrawingsExist) ? ScreenState.PLAY : ScreenState.DRAW;
+						context.fillStyle = "#fff";
+						context.fillRect(0, 0, canvas.width, canvas.height);
+						return;
 					}
+				} else {
+					context.fillStyle = "rgba(0, 0, 0, 0.5)";
+					context.fillRect(buttonX, buttonY, 192, 64);
+				}
 
-					if (tile.type === 2) {
-						context.drawImage(images.tilesheet, 768, 256, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
-					}
+				context.fillStyle = "#fff";
+				context.textBaseline = "middle";
+				context.textAlign = "center";
 
-					if (tile.type === 3) {
-						// Transdimensional block 
-						context.drawImage(images.tilesheet, 768, 640, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+				context.fillText("Play", canvas.width / 2, canvas.height / 2);
+			} else if (state === ScreenState.DRAW) {
+				if (!readyToDraw) {
+					context.fillStyle = "#fff";
+					context.fillRect(0, 0, canvas.width, canvas.height);
 
-						if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
-							context.textBaseline = "middle";
-							context.textAlign = "center";
+					context.textBaseline = "middle"
+					context.textAlign = "center";
+					context.font = "25px 'animated'";
+					context.fillStyle = "rgba(0, 0, 0, 0.5)";
+					context.fillText("How do you tell the difference between your two characters? Draw their faces!", canvas.width / 2, canvas.height / 2 - 25);
+					context.fillText("Press [space] to clear the canvas. Press [enter] to progress.", canvas.width / 2, canvas.height / 2 + 25);
+				}
+			} else if (state === ScreenState.PLAY) {
+				// Clear the canvas
+				context.fillStyle = "#fff";
+				context.fillRect(0, 0, canvas.width, canvas.height);
+
+				// Background
+				context.drawImage(images.background, 0, 0);
+
+				// Draw the current level
+				if (currentLevel !== null) {
+					var hideInformationalText = false,
+						informationalVisible = false;
+
+					// Informational text
+					for (var i = 0; i < ((currentWorld === 1) ? world1.informationalTiles.length : world2.informationalTiles.length); i++) {
+						var informationalTile = (currentWorld === 1) ? world1.informationalTiles[i] : world2.informationalTiles[i];
+
+						context.fillStyle = "rgba(0, 0, 0, 0.2)";
+						context.textBaseline = "middle";
+						context.textAlign = "center";
+						context.font = "50px 'animated'"
+
+						context.fillText("?", (informationalTile.x + TILE_SIZE / 2) - player.view.x, (informationalTile.y + TILE_SIZE / 2) - player.view.y);
+
+						if (!informationalVisible && !hideInformationalText && Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, informationalTile.x - player.view.x, informationalTile.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
 							context.fillStyle = "rgba(0, 0, 0, 0.5)";
 							context.font = "20px 'animated'"
+							context.fillText(informationalTile.text, canvas.width / 2, canvas.height / 2 - 50);
 
-							context.fillText("Press [E] to pick up the transdimensional block.", canvas.width / 2, canvas.height / 2 - 50);
-
-							hideInformationalText = true;
+							if (informationalTile.activateHud) showHud = true;
+							informationalVisible = true;
 						} else {
-							hideInformationalText = false;
+							informationalVisible = false;
 						}
 					}
-				}
+
+					// Draw the level
+					for (var i = 0; i < currentLevel.tiles.length; i++) {
+						var tile = currentLevel.tiles[i];
+
+						if (tile.type === 1) {
+							context.drawImage(images.tilesheet, 768, 0, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+						}
+
+						if (tile.type === 2) {
+							context.drawImage(images.tilesheet, 768, 256, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+						}
+
+						if (tile.type === 4) {
+							context.drawImage(images.tilesheet, 768, 1152, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
+						}
 
 
-				// Player shadow 
-				// if (player.grounded) {
-				// 	context.fillStyle = "rgba(0, 0, 0, 0.2)";
-				// 	context.beginPath();
-				// 	context.arc(player.position.x + (player.width / 2), player.position.y + player.height, 20, 0, Math.PI, false);
-				// 	context.fill();
-				// }
+						if (tile.type === 3) {
+							// Transdimensional block 
+							context.drawImage(images.tilesheet, 768, 640, 256, 256, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE);
 
-				// HUD stuff
+							if (Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, tile.position.x - player.view.x, tile.position.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
+								context.textBaseline = "middle";
+								context.textAlign = "center";
+								context.fillStyle = "rgba(0, 0, 0, 0.5)";
+								context.font = "20px 'animated'"
 
-				if (showHud) {
-					if (currentWorld === 1) {
-						context.drawImage(images.tilesheet, 768, 512, 128, 128, canvas.width - 132, 0, 128, 128);
-					} else if (currentWorld === 2) {
-						context.drawImage(images.tilesheet, 896, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+								context.fillText("Press [E] to pick up the transdimensional block.", canvas.width / 2, canvas.height / 2 - 150);
+
+								hideInformationalText = true;
+							} else {
+								hideInformationalText = false;
+							}
+						}
 					}
 
-					context.fillStyle = "rgba(0, 0, 0, 0.5)";
-					context.textBaseline = "middle";
-					context.textAlign = "right";
-					context.font = "17px 'animated'"
+					// Next level trigger
 
-					context.fillText("Press [space] to switch worlds", canvas.width - 150, 64);
-				}
+					if (currentWorld === 1) {
+						context.drawImage(images.tilesheet, 768, 896, 256, 256, world1.nextLevelTrigger.x - player.view.x, world1.nextLevelTrigger.y - player.view.y, TILE_SIZE, TILE_SIZE);
+					}
 
-				if (playerHoldingBlock) {
-					if (currentWorld === 2) {
+					// HUD stuff
+
+					if (showHud) {
+						if (currentWorld === 1) {
+							context.drawImage(images.tilesheet, 768, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+						} else if (currentWorld === 2) {
+							context.drawImage(images.tilesheet, 896, 512, 128, 128, canvas.width - 132, 0, 128, 128);
+						}
+
 						context.fillStyle = "rgba(0, 0, 0, 0.5)";
 						context.textBaseline = "middle";
-						context.textAlign = "left";
-						context.font = "17px 'animated'";
+						context.textAlign = "right";
+						context.font = "17px 'animated'"
 
-						context.drawImage(images.tilesheet, 768, 640, 256, 256, 32, 32, 64, 64);
-						context.fillText("Use [left] or [right] to place the block", 128, 64)
+						context.fillText("Press [space] to switch worlds", canvas.width - 150, 64);
 					}
-				}
 
-				// Block place messages
+					if (playerHoldingBlock) {
+						if (currentWorld === 2) {
+							context.fillStyle = "rgba(0, 0, 0, 0.5)";
+							context.textBaseline = "middle";
+							context.textAlign = "left";
+							context.font = "17px 'animated'";
 
-				if (!canPlaceBlock) {
-					context.fillStyle = "rgba(0, 0, 0, 0.2)";
-					context.textBaseline = "top";
-					context.textAlign = "center";
-					context.font = "20px 'animated'"
+							context.drawImage(images.tilesheet, 768, 640, 256, 256, 32, 32, 64, 64);
+							context.fillText("Use [left] or [right] to place the block", 128, 64)
+						}
+					}
 
-					context.fillText(placeBlockMessage, canvas.width / 2, 96);
-				}
+					// Block place messages
 
-				// Informational text
-				for (var i = 0; i < ((currentWorld === 1) ? world1.informationalTiles.length : world2.informationalTiles.length); i++) {
-					var informationalTile = (currentWorld === 1) ? world1.informationalTiles[i] : world2.informationalTiles[i];
-
-					context.fillStyle = "rgba(0, 0, 0, 0.2)";
-					context.textBaseline = "middle";
-					context.textAlign = "center";
-					context.font = "50px 'animated'"
-
-					context.fillText("?", (informationalTile.x + TILE_SIZE / 2) - player.view.x, (informationalTile.y + TILE_SIZE / 2) - player.view.y);
-
-					if (!hideInformationalText && Salmon.util.boundingBox(player.position.x, player.position.y, player.width, player.height, informationalTile.x - player.view.x, informationalTile.y - player.view.y, TILE_SIZE, TILE_SIZE)) {
-						context.fillStyle = "rgba(0, 0, 0, 0.5)";
+					if (!canPlaceBlock) {
+						context.fillStyle = "rgba(0, 0, 0, 0.2)";
+						context.textBaseline = "top";
+						context.textAlign = "center";
 						context.font = "20px 'animated'"
-						context.fillText(informationalTile.text, canvas.width / 2, canvas.height / 2 - 50);
 
-						if (informationalTile.activateHud) showHud = true;
+						context.fillText(placeBlockMessage, canvas.width / 2, 96);
 					}
-				}
 
-				// Draw the player
+					// Draw the player
 
-				if (currentWorld === 2) {
-					context.save();
+					if (currentWorld === 2) {
+						context.save();
 
-					context.globalAlpha = 0.2;
-					context.drawImage(images.tilesheet, 54, 256, 150, 252, world1Player.view.x + world1Player.position.x - player.view.x, world1Player.view.y + world1Player.position.y - player.view.y, world1Player.width, world1Player.height);
+						context.globalAlpha = 0.2;
+						context.drawImage(images.tilesheet, 54, 256, 150, 252, world1Player.view.x + world1Player.position.x - player.view.x, world1Player.view.y + world1Player.position.y - player.view.y, world1Player.width, world1Player.height);
+						context.drawImage(images.face1, world1Player.view.x + world1Player.position.x - player.view.x + 5, world1Player.view.y + world1Player.position.y - player.view.y + 5, 30, 24);
 
-					context.restore();
-				}
+						context.restore();
+					}
 
-				if (!canvas.keys[68] && !canvas.keys[65]) {
-					context.drawImage(images.tilesheet, 54, 256 * playerIdleAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
-				} else {
-					if (!canvas.keys[65]) {
-						context.drawImage(images.tilesheet, 310, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+					if (!canvas.keys[68] && !canvas.keys[65]) {
+						context.drawImage(images.tilesheet, 54, 256 * playerIdleAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+
+						if (currentWorld === 1) {
+							context.drawImage(images.face1, player.position.x + 5, player.position.y + 5, 30, 24);
+						} else if (currentWorld === 2) {
+							context.drawImage(images.face2, player.position.x + 5, player.position.y + 5, 30, 24);
+						}
 					} else {
-						context.drawImage(images.tilesheet, 566, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+						if (!canvas.keys[65]) {
+							context.drawImage(images.tilesheet, 310, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+						} else {
+							context.drawImage(images.tilesheet, 566, 256 * playerRunningAnimation.currentFrame, 150, 252, player.position.x, player.position.y, player.width, player.height);
+						}
 					}
-				}
 
-				// Overlay
-				context.drawImage(images.overlay, 0, 0);
+					// Overlay
+					context.drawImage(images.overlay, 0, 0);
 
-				// Fade
-				if (fade.fading) {
-					context.fillStyle = "rgba(50, 50, 50, " + fade.opacity + ")";
-					context.fillRect(0, 0, canvas.width, canvas.height);
-				}
+					// Fade
+					if (fade.fading) {
+						context.fillStyle = "rgba(50, 50, 50, " + fade.opacity + ")";
+						context.fillRect(0, 0, canvas.width, canvas.height);
+					}
 
-				// FPS
+					// FPS
 
-				if (window.location.hash.indexOf("debug") != -1) {
-					context.fillStyle = "#000";
-					context.textAlign = "left";
-					context.textBaseline = "top";
-					context.font = "15px monospace";
-					context.fillText(fps.display, 7, 3);
+					if (window.location.hash.indexOf("debug") != -1) {
+						context.fillStyle = "#000";
+						context.textAlign = "left";
+						context.textBaseline = "top";
+						context.font = "15px monospace";
+						context.fillText(fps.display, 7, 3);
+					}
 				}
 			}
 		}
@@ -643,26 +801,75 @@
 
 		window.addEventListener("keyup", function(e) {
 			if (e.keyCode === 32) {
-				if (!fade.fading) transitionWorld();
+				if (state === ScreenState.PLAY) {
+					if (!fade.fading) transitionWorld();
+				} else if (state === ScreenState.DRAW) {
+					context.clearRect(0, 0, canvas.width, canvas.height);
+				}
 			}
 
-			if (e.keyCode === 69) {
+			if (e.keyCode === 69 && state === ScreenState.PLAY) {
 				pickUpBlock = true;
 			}
 
-			if (e.keyCode === 39) {
+			if (e.keyCode === 39 && state === ScreenState.PLAY) {
 				// Right
-				if (currentWorld === 2 && playerHoldingBlock) placeBlock(false)
+				if (currentWorld === 2 && playerHoldingBlock) placeBlock(false);
 			}
 
-			if (e.keyCode === 37) {
+			if (e.keyCode === 37 && state === ScreenState.PLAY) {
 				// Left
 				if (currentWorld === 2 && playerHoldingBlock) placeBlock(true);
 			}
+
+			if (e.keyCode === 13) {
+				// Enter
+				if (state === ScreenState.DRAW) {
+					if (readyToDraw) {
+						if (currentDrawing === 1) {
+							localStorage.setItem("face1", canvas.domElement.toDataURL());
+							currentDrawing++;
+							context.clearRect(0, 0, canvas.width, canvas.height);
+						} else {
+							localStorage.setItem("face2", canvas.domElement.toDataURL());
+							state = ScreenState.PLAY;
+						}
+					}
+
+					if (!readyToDraw) {
+						readyToDraw = true;
+						context.clearRect(0, 0, canvas.width, canvas.height);
+					}
+				}
+			}
+		});
+
+		canvas.domElement.addEventListener("mousemove", function(e) {
+			mouse.x = e.pageX - canvas.domElement.offsetLeft;
+			mouse.y = e.pageY - canvas.domElement.offsetTop;
+
+			if (state === ScreenState.DRAW && mouse.down) {
+				drawLine(mouse.x, mouse.y);
+			}
+		});
+
+		canvas.domElement.addEventListener("mousedown", function() {
+			mouse.down = true;
+
+			if (state === ScreenState.DRAW) {
+				drawLine(mouse.x, mouse.y);
+			}
+		});
+
+		canvas.domElement.addEventListener("mouseup", function() {
+			mouse.down = false;
+			if (state === ScreenState.DRAW) context.beginPath();
 		});
 
 		// Load in the first levels
 		loadLevels();
+
+		backgroundMusic.play();
 	}
 
 	init();
